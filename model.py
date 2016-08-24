@@ -117,6 +117,7 @@ class DCGAN(object):
 
         self.saver = tf.train.Saver()
 
+
     def train(self, config):
         """Train DCGAN"""
         if config.dataset == 'mnist':
@@ -136,6 +137,7 @@ class DCGAN(object):
         self.g_sum = tf.merge_summary([self.z_sum, self.d__sum, 
             self.G_sum, self.d_loss_fake_sum, self.g_loss_sum])
         self.d_sum = tf.merge_summary([self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum])
+        self.merged = tf.merge_all_summaries() 
         self.writer = tf.train.SummaryWriter("./logs", self.sess.graph)
 
         sample_z = np.random.uniform(-1, 1, size=(self.sample_size , self.z_dim))
@@ -187,19 +189,22 @@ class DCGAN(object):
 
                 if config.dataset == 'mnist':
                     # Update D network
-                    _, summary_str = self.sess.run([d_optim, self.d_sum],
+                    _, summary_str, merged_summary = self.sess.run([d_optim, self.d_sum, self.merged],
                         feed_dict={ self.images: batch_images, self.z: batch_z, self.y:batch_labels })
                     self.writer.add_summary(summary_str, counter)
+                    self.writer.add_summary(merged_summary, counter)
 
                     # Update G network
-                    _, summary_str = self.sess.run([g_optim, self.g_sum],
+                    _, summary_str, merged_summary = self.sess.run([g_optim, self.g_sum, self.merged],
                         feed_dict={ self.z: batch_z, self.y:batch_labels })
                     self.writer.add_summary(summary_str, counter)
+                    self.writer.add_summary(merged_summary, counter)
 
                     # Run g_optim twice to make sure that d_loss does not go to zero (different from paper)
-                    _, summary_str = self.sess.run([g_optim, self.g_sum],
+                    _, summary_str, merged_summary = self.sess.run([g_optim, self.g_sum, self.merged],
                         feed_dict={ self.z: batch_z, self.y:batch_labels })
                     self.writer.add_summary(summary_str, counter)
+                    self.writer.add_summary(merged_summary, counter)
                     
                     errD_fake = self.d_loss_fake.eval({self.z: batch_z, self.y:batch_labels})
                     errD_real = self.d_loss_real.eval({self.images: batch_images, self.y:batch_labels})
@@ -251,13 +256,18 @@ class DCGAN(object):
         if reuse:
             tf.get_variable_scope().reuse_variables()
 
-        if not self.y_dim:
-            h0 = lrelu(conv2d(image, self.df_dim, name='d_h0_conv'))
-            h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim*2, name='d_h1_conv')))
-            h2 = lrelu(self.d_bn2(conv2d(h1, self.df_dim*4, name='d_h2_conv')))
-            h3 = lrelu(self.d_bn3(conv2d(h2, self.df_dim*8, name='d_h3_conv')))
-            h4 = linear(tf.reshape(h3, [self.batch_size, -1]), 1, 'd_h3_lin')
 
+        if not self.y_dim:
+            h0 = lrelu(conv2d(image, self.df_dim, name='d_h0_conv', attach_summaries=True))
+            variable_summaries(h0, 'd_ho_conv/activation')
+            h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim*2, name='d_h1_conv', attach_summaries=True)))
+            variable_summaries(h1, 'd_h1_conv/activation')
+            h2 = lrelu(self.d_bn2(conv2d(h1, self.df_dim*4, name='d_h2_conv', attach_summaries=True)))
+            variable_summaries(h2, 'd_h2_conv/activation')
+            h3 = lrelu(self.d_bn3(conv2d(h2, self.df_dim*8, name='d_h3_conv', attach_summaries=True)))
+            variable_summaries(h3, 'd_h3_conv/activation')
+            h4 = linear(tf.reshape(h3, [self.batch_size, -1]), 1, 'd_h3_lin')
+            variable_summaries(h4, 'd_h3_lin/activation')
             return tf.nn.sigmoid(h4), h4
         else:
             yb = tf.reshape(y, [self.batch_size, 1, 1, self.y_dim])
@@ -287,21 +297,26 @@ class DCGAN(object):
 
             self.h0 = tf.reshape(self.z_, [-1, s16, s16, self.gf_dim * 8])
             h0 = tf.nn.relu(self.g_bn0(self.h0))
+            variable_summaries(h0, 'g_h0_lin/activation')
 
             self.h1, self.h1_w, self.h1_b = deconv2d(h0, 
-                [self.batch_size, s8, s8, self.gf_dim*4], name='g_h1', with_w=True)
+                                                     [self.batch_size, s8, s8, self.gf_dim*4], name='g_h1', with_w=True, attach_summaries=True)
             h1 = tf.nn.relu(self.g_bn1(self.h1))
+            variable_summaries(h1, 'g_h1/activation')
 
             h2, self.h2_w, self.h2_b = deconv2d(h1,
-                [self.batch_size, s4, s4, self.gf_dim*2], name='g_h2', with_w=True)
+                                                [self.batch_size, s4, s4, self.gf_dim*2], name='g_h2', with_w=True, attach_summaries=True)
             h2 = tf.nn.relu(self.g_bn2(h2))
+            variable_summaries(h2, 'g_h2/activation')
 
             h3, self.h3_w, self.h3_b = deconv2d(h2,
-                [self.batch_size, s2, s2, self.gf_dim*1], name='g_h3', with_w=True)
+                                                [self.batch_size, s2, s2, self.gf_dim*1], name='g_h3', with_w=True, attach_summaries=True)
             h3 = tf.nn.relu(self.g_bn3(h3))
+            variable_summaries(h3, 'g_h3/activation')
 
             h4, self.h4_w, self.h4_b = deconv2d(h3,
-                [self.batch_size, s, s, self.c_dim], name='g_h4', with_w=True)
+                                                [self.batch_size, s, s, self.c_dim], name='g_h4', with_w=True, attach_summaries=True)
+            variable_summaries(h4, 'g_h4/activation')
 
             return tf.nn.tanh(h4)
         else:

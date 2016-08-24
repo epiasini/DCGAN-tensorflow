@@ -70,7 +70,7 @@ def conv_cond_concat(x, y):
 
 def conv2d(input_, output_dim, 
            k_h=5, k_w=5, d_h=2, d_w=2, stddev=0.02,
-           name="conv2d"):
+           name="conv2d", attach_summaries=False):
     with tf.variable_scope(name):
         w = tf.get_variable('w', [k_h, k_w, input_.get_shape()[-1], output_dim],
                             initializer=tf.truncated_normal_initializer(stddev=stddev))
@@ -78,12 +78,16 @@ def conv2d(input_, output_dim,
 
         biases = tf.get_variable('biases', [output_dim], initializer=tf.constant_initializer(0.0))
         conv = tf.reshape(tf.nn.bias_add(conv, biases), conv.get_shape())
+        if attach_summaries:
+            variable_summaries(w, name+'/weights')
+            variable_summaries(biases, name+'/biases')
+            variable_summaries(conv, name+'/preactivation')
 
         return conv
 
 def deconv2d(input_, output_shape,
              k_h=5, k_w=5, d_h=2, d_w=2, stddev=0.02,
-             name="deconv2d", with_w=False):
+             name="deconv2d", with_w=False, attach_summaries=False):
     with tf.variable_scope(name):
         # filter : [height, width, output_channels, in_channels]
         w = tf.get_variable('w', [k_h, k_h, output_shape[-1], input_.get_shape()[-1]],
@@ -100,6 +104,10 @@ def deconv2d(input_, output_shape,
 
         biases = tf.get_variable('biases', [output_shape[-1]], initializer=tf.constant_initializer(0.0))
         deconv = tf.reshape(tf.nn.bias_add(deconv, biases), deconv.get_shape())
+        if attach_summaries:
+            variable_summaries(w, name+'/weights')
+            variable_summaries(biases, name+'/biases')
+            variable_summaries(deconv, name+'/preactivation')
 
         if with_w:
             return deconv, w, biases
@@ -122,3 +130,15 @@ def linear(input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=
             return tf.matmul(input_, matrix) + bias, matrix, bias
         else:
             return tf.matmul(input_, matrix) + bias
+
+def variable_summaries(var, name):
+    """Attach a lot of summaries to a Tensor."""
+    with tf.name_scope('summaries'):
+        mean = tf.reduce_mean(var)
+        tf.scalar_summary('mean/' + name, mean)
+        with tf.name_scope('stddev'):
+            stddev = tf.sqrt(tf.reduce_sum(tf.square(var - mean)))
+        tf.scalar_summary('stddev/' + name, stddev)
+        tf.scalar_summary('max/' + name, tf.reduce_max(var))
+        tf.scalar_summary('min/' + name, tf.reduce_min(var))
+        tf.histogram_summary(name, var)
