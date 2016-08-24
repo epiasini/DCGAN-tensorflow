@@ -94,21 +94,21 @@ class DCGAN(object):
             self.D_, self.D_logits_ = self.discriminator(self.G, reuse=True)
         
 
-        self.d_sum = tf.histogram_summary("d", self.D)
-        self.d__sum = tf.histogram_summary("d_", self.D_)
-        self.G_sum = tf.image_summary("G", self.G)
+        self.d_sum = tf.histogram_summary("summaries/d", self.D)
+        self.d__sum = tf.histogram_summary("summaries/d_", self.D_)
+        self.G_sum = tf.image_summary("summaries/G", self.G)
 
         self.d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits, tf.ones_like(self.D)))
         self.d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.zeros_like(self.D_)))
         self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_)))
 
-        self.d_loss_real_sum = tf.scalar_summary("d_loss_real", self.d_loss_real)
-        self.d_loss_fake_sum = tf.scalar_summary("d_loss_fake", self.d_loss_fake)
+        self.d_loss_real_sum = tf.scalar_summary("summaries/d_loss_real", self.d_loss_real)
+        self.d_loss_fake_sum = tf.scalar_summary("summaries/d_loss_fake", self.d_loss_fake)
                                                     
         self.d_loss = self.d_loss_real + self.d_loss_fake
 
-        self.g_loss_sum = tf.scalar_summary("g_loss", self.g_loss)
-        self.d_loss_sum = tf.scalar_summary("d_loss", self.d_loss)
+        self.g_loss_sum = tf.scalar_summary("summaries/g_loss", self.g_loss)
+        self.d_loss_sum = tf.scalar_summary("summaries/d_loss", self.d_loss)
 
         t_vars = tf.trainable_variables()
 
@@ -134,10 +134,10 @@ class DCGAN(object):
                           .minimize(self.g_loss, var_list=self.g_vars)
         tf.initialize_all_variables().run()
 
-        self.g_sum = tf.merge_summary([self.z_sum, self.d__sum, 
-            self.G_sum, self.d_loss_fake_sum, self.g_loss_sum])
-        self.d_sum = tf.merge_summary([self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum])
-        self.merged = tf.merge_all_summaries() 
+        #self.g_sum = tf.merge_summary([self.z_sum, self.d__sum, 
+        #    self.G_sum, self.d_loss_fake_sum, self.g_loss_sum])
+        #self.d_sum = tf.merge_summary([self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum])
+        self.merged = tf.merge_all_summaries()
         self.writer = tf.train.SummaryWriter("./logs", self.sess.graph)
 
         sample_z = np.random.uniform(-1, 1, size=(self.sample_size , self.z_dim))
@@ -208,21 +208,18 @@ class DCGAN(object):
                     errG = self.g_loss.eval({self.z: batch_z, self.y:batch_labels})
                 else:
                     # Update D network
-                    _, summary_str, merged_summary = self.sess.run([d_optim, self.d_sum, self.merged],
+                    _,  merged_summary = self.sess.run([d_optim, self.merged],
                         feed_dict={ self.images: batch_images, self.z: batch_z })
-                    self.writer.add_summary(summary_str, counter)
                     self.writer.add_summary(merged_summary, counter)
 
                     # Update G network
-                    _, summary_str, merged_summary = self.sess.run([g_optim, self.g_sum, self.merged],
-                        feed_dict={ self.z: batch_z })
-                    self.writer.add_summary(summary_str, counter)
+                    _, merged_summary = self.sess.run([g_optim, self.merged],
+                        feed_dict={ self.images: batch_images, self.z: batch_z })
                     self.writer.add_summary(merged_summary, counter)
 
                     # Run g_optim twice to make sure that d_loss does not go to zero (different from paper)
-                    _, summary_str, merged_summary = self.sess.run([g_optim, self.g_sum, self.merged],
-                        feed_dict={ self.z: batch_z })
-                    self.writer.add_summary(summary_str, counter)
+                    _, merged_summary = self.sess.run([g_optim, self.merged],
+                        feed_dict={ self.images: batch_images, self.z: batch_z })
                     self.writer.add_summary(merged_summary, counter)
                     
                     errD_fake = self.d_loss_fake.eval({self.z: batch_z})
@@ -258,16 +255,17 @@ class DCGAN(object):
 
 
         if not self.y_dim:
-            h0 = lrelu(conv2d(image, self.df_dim, name='d_h0_conv', attach_summaries=True))
-            variable_summaries(h0, 'd_ho_conv/activation')
-            h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim*2, name='d_h1_conv', attach_summaries=True)))
-            variable_summaries(h1, 'd_h1_conv/activation')
-            h2 = lrelu(self.d_bn2(conv2d(h1, self.df_dim*4, name='d_h2_conv', attach_summaries=True)))
-            variable_summaries(h2, 'd_h2_conv/activation')
-            h3 = lrelu(self.d_bn3(conv2d(h2, self.df_dim*8, name='d_h3_conv', attach_summaries=True)))
-            variable_summaries(h3, 'd_h3_conv/activation')
+            h0 = lrelu(conv2d(image, self.df_dim, name='d_h0_conv', attach_summaries=not reuse))
+            h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim*2, name='d_h1_conv', attach_summaries=not reuse)))
+            h2 = lrelu(self.d_bn2(conv2d(h1, self.df_dim*4, name='d_h2_conv', attach_summaries=not reuse)))
+            h3 = lrelu(self.d_bn3(conv2d(h2, self.df_dim*8, name='d_h3_conv', attach_summaries=not reuse)))
             h4 = linear(tf.reshape(h3, [self.batch_size, -1]), 1, 'd_h3_lin')
-            variable_summaries(h4, 'd_h3_lin/activation')
+            if not reuse:
+                variable_summaries(h0, 'd_h0_conv/activation')
+                variable_summaries(h1, 'd_h1_conv/activation')
+                variable_summaries(h2, 'd_h2_conv/activation')
+                variable_summaries(h3, 'd_h3_conv/activation')
+                variable_summaries(h4, 'd_h3_lin/activation')
             return tf.nn.sigmoid(h4), h4
         else:
             yb = tf.reshape(y, [self.batch_size, 1, 1, self.y_dim])
