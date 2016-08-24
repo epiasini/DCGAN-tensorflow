@@ -35,6 +35,7 @@ To train a model with downloaded dataset:
 
     $ python main.py --dataset mnist --is_train True
     $ python main.py --dataset celebA --is_train True --is_crop True
+	$ python main.py --dataset cats --is_train True --is_crop True --image_size -1
 
 To test with an existing model:
 

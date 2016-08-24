@@ -19,6 +19,7 @@ class DCGAN(object):
 
         Args:
             sess: TensorFlow session
+            image_size: size for center-cropping before input image scaling. Use None to just make a maximal square crop.
             batch_size: The size of batch. Should be specified before training.
             output_size: (optional) The resolution in pixels of the images. [64]
             y_dim: (optional) Dimension of dim for y. [None]
@@ -122,8 +123,10 @@ class DCGAN(object):
         """Train DCGAN"""
         if config.dataset == 'mnist':
             data_X, data_y = self.load_mnist()
-        else:
-            data = glob(os.path.join("./data", config.dataset, "*.jpg"))
+        elif config.dataset == 'celebA':
+            data = glob(os.path.join("./data/", config.dataset, "*.jpg"))
+        elif config.dataset == 'cats':
+            data = glob("./data/cats_vs_dogs/train/cat.*.jpg")
         #np.random.shuffle(data)
 
         d_optim = tf.train.AdamOptimizer(config.learning_rate, beta1=config.beta1) \
@@ -158,9 +161,13 @@ class DCGAN(object):
         for epoch in xrange(config.epoch):
             if config.dataset == 'mnist':
                 batch_idxs = min(len(data_X), config.train_size) // config.batch_size
-            else:            
+            elif config.dataset == 'celebA':
                 data = glob(os.path.join("./data", config.dataset, "*.jpg"))
                 batch_idxs = min(len(data), config.train_size) // config.batch_size
+            elif config.dataset == 'cats':
+                data = glob("./data/cats_vs_dogs/train/cat.*.jpg")
+                batch_idxs = min(len(data), config.train_size) // config.batch_size
+                
 
             for idx in xrange(0, batch_idxs):
                 if config.dataset == 'mnist':

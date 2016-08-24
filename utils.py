@@ -40,13 +40,18 @@ def imsave(images, size, path):
     return scipy.misc.imsave(path, merge(images, size))
 
 def center_crop(x, crop_h, crop_w=None, resize_w=64):
-    if crop_w is None:
-        crop_w = crop_h
     h, w = x.shape[:2]
+    if crop_h < 0:
+        # in this case, just crop to the largest square in the center
+        # of the picture
+        crop_h = crop_w = np.min([h,w])
+    else:
+        if crop_w is None:
+            crop_w = crop_h
     j = int(round((h - crop_h)/2.))
     i = int(round((w - crop_w)/2.))
-    return scipy.misc.imresize(x[j:j+crop_h, i:i+crop_w],
-                               [resize_w, resize_w])
+    cropped_x = x[j:j+crop_h, i:i+crop_w]
+    return scipy.misc.imresize(cropped_x, [resize_w, resize_w])
 
 def transform(image, npx=64, is_crop=True, resize_w=64):
     # npx : # of pixels width/height of image
