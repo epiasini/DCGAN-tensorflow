@@ -189,41 +189,41 @@ class DCGAN(object):
 
                 if config.dataset == 'mnist':
                     # Update D network
-                    _, summary_str, merged_summary = self.sess.run([d_optim, self.d_sum, self.merged],
+                    _, summary_str = self.sess.run([d_optim, self.d_sum],
                         feed_dict={ self.images: batch_images, self.z: batch_z, self.y:batch_labels })
                     self.writer.add_summary(summary_str, counter)
-                    self.writer.add_summary(merged_summary, counter)
 
                     # Update G network
-                    _, summary_str, merged_summary = self.sess.run([g_optim, self.g_sum, self.merged],
+                    _, summary_str = self.sess.run([g_optim, self.g_sum],
                         feed_dict={ self.z: batch_z, self.y:batch_labels })
                     self.writer.add_summary(summary_str, counter)
-                    self.writer.add_summary(merged_summary, counter)
 
                     # Run g_optim twice to make sure that d_loss does not go to zero (different from paper)
-                    _, summary_str, merged_summary = self.sess.run([g_optim, self.g_sum, self.merged],
+                    _, summary_str = self.sess.run([g_optim, self.g_sum],
                         feed_dict={ self.z: batch_z, self.y:batch_labels })
                     self.writer.add_summary(summary_str, counter)
-                    self.writer.add_summary(merged_summary, counter)
                     
                     errD_fake = self.d_loss_fake.eval({self.z: batch_z, self.y:batch_labels})
                     errD_real = self.d_loss_real.eval({self.images: batch_images, self.y:batch_labels})
                     errG = self.g_loss.eval({self.z: batch_z, self.y:batch_labels})
                 else:
                     # Update D network
-                    _, summary_str = self.sess.run([d_optim, self.d_sum],
+                    _, summary_str, merged_summary = self.sess.run([d_optim, self.d_sum, self.merged],
                         feed_dict={ self.images: batch_images, self.z: batch_z })
                     self.writer.add_summary(summary_str, counter)
+                    self.writer.add_summary(merged_summary, counter)
 
                     # Update G network
-                    _, summary_str = self.sess.run([g_optim, self.g_sum],
+                    _, summary_str, merged_summary = self.sess.run([g_optim, self.g_sum, self.merged],
                         feed_dict={ self.z: batch_z })
                     self.writer.add_summary(summary_str, counter)
+                    self.writer.add_summary(merged_summary, counter)
 
                     # Run g_optim twice to make sure that d_loss does not go to zero (different from paper)
-                    _, summary_str = self.sess.run([g_optim, self.g_sum],
+                    _, summary_str, merged_summary = self.sess.run([g_optim, self.g_sum, self.merged],
                         feed_dict={ self.z: batch_z })
                     self.writer.add_summary(summary_str, counter)
+                    self.writer.add_summary(merged_summary, counter)
                     
                     errD_fake = self.d_loss_fake.eval({self.z: batch_z})
                     errD_real = self.d_loss_real.eval({self.images: batch_images})
