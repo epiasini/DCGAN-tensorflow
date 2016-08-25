@@ -100,7 +100,7 @@ class DCGAN(object):
 
         self.d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits, tf.ones_like(self.D)))
         self.d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.zeros_like(self.D_)))
-        self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_)))
+        self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_))) # TODO here we cab use the trick in the original GAN paper and train G to maximise D(G(z)) instead of minimising (1-D(G(z)))
 
         self.d_loss_real_sum = tf.scalar_summary("summaries/d_loss_real", self.d_loss_real)
         self.d_loss_fake_sum = tf.scalar_summary("summaries/d_loss_fake", self.d_loss_fake)
@@ -134,10 +134,10 @@ class DCGAN(object):
                           .minimize(self.g_loss, var_list=self.g_vars)
         tf.initialize_all_variables().run()
 
-        #self.g_sum = tf.merge_summary([self.z_sum, self.d__sum, 
-        #    self.G_sum, self.d_loss_fake_sum, self.g_loss_sum])
-        #self.d_sum = tf.merge_summary([self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum])
-        self.merged = tf.merge_all_summaries()
+        self.g_sum = tf.merge_summary([self.z_sum, self.d__sum, 
+            self.G_sum, self.d_loss_fake_sum, self.g_loss_sum])
+        self.d_sum = tf.merge_summary([self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum])
+        #self.merged = tf.merge_all_summaries()
         self.writer = tf.train.SummaryWriter("./logs", self.sess.graph)
 
         sample_z = np.random.uniform(-1, 1, size=(self.sample_size , self.z_dim))
@@ -208,19 +208,19 @@ class DCGAN(object):
                     errG = self.g_loss.eval({self.z: batch_z, self.y:batch_labels})
                 else:
                     # Update D network
-                    _,  merged_summary = self.sess.run([d_optim, self.merged],
+                    _,  summary = self.sess.run([d_optim, self.d_sum],
                         feed_dict={ self.images: batch_images, self.z: batch_z })
-                    self.writer.add_summary(merged_summary, counter)
+                    self.writer.add_summary(summary, counter)
 
                     # Update G network
-                    _, merged_summary = self.sess.run([g_optim, self.merged],
-                        feed_dict={ self.images: batch_images, self.z: batch_z })
-                    self.writer.add_summary(merged_summary, counter)
+                    _, summary = self.sess.run([g_optim, self.g_sum],
+                        feed_dict={ self.z: batch_z })
+                    self.writer.add_summary(summary, counter)
 
                     # Run g_optim twice to make sure that d_loss does not go to zero (different from paper)
-                    _, merged_summary = self.sess.run([g_optim, self.merged],
-                        feed_dict={ self.images: batch_images, self.z: batch_z })
-                    self.writer.add_summary(merged_summary, counter)
+                    _, summary = self.sess.run([g_optim, self.g_sum],
+                        feed_dict={ self.z: batch_z })
+                    self.writer.add_summary(summary, counter)
                     
                     errD_fake = self.d_loss_fake.eval({self.z: batch_z})
                     errD_real = self.d_loss_real.eval({self.images: batch_images})
