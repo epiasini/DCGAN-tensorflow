@@ -6,6 +6,8 @@ import tensorflow as tf
 import numpy as np
 from six.moves import xrange
 
+import vgg16
+
 from ops import *
 from utils import *
 
@@ -92,6 +94,15 @@ class DCGAN(object):
 
             self.sampler = self.sampler(self.z)
             self.D_, self.D_logits_ = self.discriminator(self.G, reuse=True)
+
+            self.vgg = vgg16.Vgg16()
+            self.vgg_ = vgg16.Vgg16()
+            with tf.name_scope("content_vgg"):
+                self.vgg.build(self.images)
+                self.vgg_.build(self.G, reuse=True)
+            self.V = self.vgg.pool4;
+            self.V_ = self.vgg_.pool4;
+            
         
 
         self.d_sum = tf.histogram_summary("summaries/d", self.D)

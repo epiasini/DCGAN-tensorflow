@@ -85,3 +85,5 @@ Session.vim
 .netrwhist
 *~
 
+/vgg16.npy
+/baklogs/
