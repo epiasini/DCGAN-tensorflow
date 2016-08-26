@@ -15,8 +15,8 @@ class DCGAN(object):
     def __init__(self, sess, image_size=108, is_crop=True,
                  batch_size=64, sample_size = 64, output_size=64,
                  y_dim=None, z_dim=100, gf_dim=64, df_dim=64,
-                 gfc_dim=1024, dfc_dim=1024, c_dim=3, dataset_name='default',
-                 checkpoint_dir=None):
+                 gfc_dim=1024, dfc_dim=1024, c_dim=3, vgg_reg=1,
+                 dataset_name='default', checkpoint_dir=None):
         """
 
         Args:
@@ -31,6 +31,7 @@ class DCGAN(object):
             gfc_dim: (optional) Dimension of gen units for for fully connected layer. [1024]
             dfc_dim: (optional) Dimension of discrim units for fully connected layer. [1024]
             c_dim: (optional) Dimension of image color. For grayscale input, set to 1. [3]
+            vgg_reg: (optional) VGG regularisation hyperparameter. [1]
         """
         self.sess = sess
         self.is_crop = is_crop
@@ -50,6 +51,8 @@ class DCGAN(object):
         self.dfc_dim = dfc_dim
 
         self.c_dim = c_dim
+        
+        self.vgg_reg = vgg_reg
 
         # batch normalization : deals with poor initialization helps gradient flow
         self.d_bn1 = batch_norm(name='d_bn1')
@@ -102,16 +105,20 @@ class DCGAN(object):
                 self.vgg_.build(self.G, reuse=True)
             self.V = self.vgg.pool4;
             self.V_ = self.vgg_.pool4;
-            
         
 
         self.d_sum = tf.histogram_summary("summaries/d", self.D)
         self.d__sum = tf.histogram_summary("summaries/d_", self.D_)
         self.G_sum = tf.image_summary("summaries/G", self.G)
 
+        self.v_activation_real = tf.reduce_mean(self.V, reduction_indices=1)
+        self.v_activation_fake = tf.reduce_mean(self.V_, reduction_indices=1)
+        self.v_loss = tf.truediv(tf.nn.l2_loss(tf.sub(self.V_, self.V)), tf.nn.l2_loss(self.V))
+
         self.d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits, tf.ones_like(self.D)))
         self.d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.zeros_like(self.D_)))
-        self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_))) # TODO here we cab use the trick in the original GAN paper and train G to maximise D(G(z)) instead of minimising (1-D(G(z)))
+        self.g_loss = - tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.zeros_like(self.D_))) + self.vgg_reg * self.v_loss
+
 
         self.d_loss_real_sum = tf.scalar_summary("summaries/d_loss_real", self.d_loss_real)
         self.d_loss_fake_sum = tf.scalar_summary("summaries/d_loss_fake", self.d_loss_fake)
@@ -127,7 +134,6 @@ class DCGAN(object):
         self.g_vars = [var for var in t_vars if 'g_' in var.name]
 
         self.saver = tf.train.Saver()
-
 
     def train(self, config):
         """Train DCGAN"""
@@ -225,17 +231,17 @@ class DCGAN(object):
 
                     # Update G network
                     _, summary = self.sess.run([g_optim, self.g_sum],
-                        feed_dict={ self.z: batch_z })
+                        feed_dict={ self.images: batch_images, self.z: batch_z })
                     self.writer.add_summary(summary, counter)
 
                     # Run g_optim twice to make sure that d_loss does not go to zero (different from paper)
                     _, summary = self.sess.run([g_optim, self.g_sum],
-                        feed_dict={ self.z: batch_z })
+                        feed_dict={ self.images: batch_images, self.z: batch_z })
                     self.writer.add_summary(summary, counter)
                     
                     errD_fake = self.d_loss_fake.eval({self.z: batch_z})
                     errD_real = self.d_loss_real.eval({self.images: batch_images})
-                    errG = self.g_loss.eval({self.z: batch_z})
+                    errG = self.g_loss.eval({self.images: batch_images, self.z: batch_z})
 
                 counter += 1
                 print("Epoch: [%2d] [%4d/%4d] time: %4.4f, d_loss: %.8f, g_loss: %.8f" \
