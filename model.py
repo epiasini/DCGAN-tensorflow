@@ -119,7 +119,6 @@ class DCGAN(object):
         self.d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.zeros_like(self.D_)))
         self.g_loss = - tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.zeros_like(self.D_))) + self.vgg_reg * self.v_loss
 
-
         self.d_loss_real_sum = tf.scalar_summary("summaries/d_loss_real", self.d_loss_real)
         self.d_loss_fake_sum = tf.scalar_summary("summaries/d_loss_fake", self.d_loss_fake)
                                                     
