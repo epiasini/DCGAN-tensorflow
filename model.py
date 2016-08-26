@@ -6,6 +6,8 @@ import tensorflow as tf
 import numpy as np
 from six.moves import xrange
 
+import vgg16
+
 from ops import *
 from utils import *
 
@@ -92,6 +94,15 @@ class DCGAN(object):
 
             self.sampler = self.sampler(self.z)
             self.D_, self.D_logits_ = self.discriminator(self.G, reuse=True)
+
+            self.vgg = vgg16.Vgg16()
+            self.vgg_ = vgg16.Vgg16()
+            with tf.name_scope("content_vgg"):
+                self.vgg.build(self.images)
+                self.vgg_.build(self.G, reuse=True)
+            self.V = self.vgg.pool4;
+            self.V_ = self.vgg_.pool4;
+            
         
 
         self.d_sum = tf.histogram_summary("summaries/d", self.D)
@@ -134,10 +145,10 @@ class DCGAN(object):
                           .minimize(self.g_loss, var_list=self.g_vars)
         tf.initialize_all_variables().run()
 
-        #self.g_sum = tf.merge_summary([self.z_sum, self.d__sum, 
-        #    self.G_sum, self.d_loss_fake_sum, self.g_loss_sum])
-        #self.d_sum = tf.merge_summary([self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum])
-        self.merged = tf.merge_all_summaries()
+        self.g_sum = tf.merge_summary([self.z_sum, self.d__sum, 
+            self.G_sum, self.d_loss_fake_sum, self.g_loss_sum])
+        self.d_sum = tf.merge_summary([self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum])
+        #self.merged = tf.merge_all_summaries()
         self.writer = tf.train.SummaryWriter("./logs", self.sess.graph)
 
         sample_z = np.random.uniform(-1, 1, size=(self.sample_size , self.z_dim))
@@ -208,19 +219,19 @@ class DCGAN(object):
                     errG = self.g_loss.eval({self.z: batch_z, self.y:batch_labels})
                 else:
                     # Update D network
-                    _,  merged_summary = self.sess.run([d_optim, self.merged],
+                    _,  summary = self.sess.run([d_optim, self.d_sum],
                         feed_dict={ self.images: batch_images, self.z: batch_z })
-                    self.writer.add_summary(merged_summary, counter)
+                    self.writer.add_summary(summary, counter)
 
                     # Update G network
-                    _, merged_summary = self.sess.run([g_optim, self.merged],
-                        feed_dict={ self.images: batch_images, self.z: batch_z })
-                    self.writer.add_summary(merged_summary, counter)
+                    _, summary = self.sess.run([g_optim, self.g_sum],
+                        feed_dict={ self.z: batch_z })
+                    self.writer.add_summary(summary, counter)
 
                     # Run g_optim twice to make sure that d_loss does not go to zero (different from paper)
-                    _, merged_summary = self.sess.run([g_optim, self.merged],
-                        feed_dict={ self.images: batch_images, self.z: batch_z })
-                    self.writer.add_summary(merged_summary, counter)
+                    _, summary = self.sess.run([g_optim, self.g_sum],
+                        feed_dict={ self.z: batch_z })
+                    self.writer.add_summary(summary, counter)
                     
                     errD_fake = self.d_loss_fake.eval({self.z: batch_z})
                     errD_real = self.d_loss_real.eval({self.images: batch_images})
