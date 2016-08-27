@@ -9,7 +9,7 @@ from utils import *
 class batch_norm(object):
     """Code modification of http://stackoverflow.com/a/33950177"""
     def __init__(self, epsilon=1e-5, momentum = 0.9, name="batch_norm"):
-        with tf.variable_scope(name):
+        with tf.variable_scope('{}/{}'.format(tf.get_variable_scope().name, name)):
             self.epsilon = epsilon
             self.momentum = momentum
 
@@ -20,7 +20,7 @@ class batch_norm(object):
         shape = x.get_shape().as_list()
 
         if train:
-            with tf.variable_scope(self.name) as scope:
+            with tf.variable_scope('{}/{}'.format(tf.get_variable_scope().name, self.name)) as scope:
                 self.beta = tf.get_variable("beta", [shape[-1]],
                                     initializer=tf.constant_initializer(0.))
                 self.gamma = tf.get_variable("gamma", [shape[-1]],
@@ -44,24 +44,6 @@ class batch_norm(object):
 
         return normed
 
-def binary_cross_entropy(preds, targets, name=None):
-    """Computes binary cross entropy given `preds`.
-
-    For brevity, let `x = `, `z = targets`.  The logistic loss is
-
-        loss(x, z) = - sum_i (x[i] * log(z[i]) + (1 - x[i]) * log(1 - z[i]))
-
-    Args:
-        preds: A `Tensor` of type `float32` or `float64`.
-        targets: A `Tensor` of the same type and shape as `preds`.
-    """
-    eps = 1e-12
-    with ops.op_scope([preds, targets], name, "bce_loss") as name:
-        preds = ops.convert_to_tensor(preds, name="preds")
-        targets = ops.convert_to_tensor(targets, name="targets")
-        return tf.reduce_mean(-(targets * tf.log(preds + eps) +
-                              (1. - targets) * tf.log(1. - preds + eps)))
-
 def conv_cond_concat(x, y):
     """Concatenate conditioning vector on feature map axis."""
     x_shapes = x.get_shape()
@@ -71,7 +53,7 @@ def conv_cond_concat(x, y):
 def conv2d(input_, output_dim, 
            k_h=5, k_w=5, d_h=2, d_w=2, stddev=0.02,
            name="conv2d", attach_summaries=False):
-    with tf.variable_scope(name):
+    with tf.variable_scope('{}/{}'.format(tf.get_variable_scope().name, name)):
         w = tf.get_variable('w', [k_h, k_w, input_.get_shape()[-1], output_dim],
                             initializer=tf.truncated_normal_initializer(stddev=stddev))
         conv = tf.nn.conv2d(input_, w, strides=[1, d_h, d_w, 1], padding='SAME')
@@ -88,7 +70,7 @@ def conv2d(input_, output_dim,
 def deconv2d(input_, output_shape,
              k_h=5, k_w=5, d_h=2, d_w=2, stddev=0.02,
              name="deconv2d", with_w=False, attach_summaries=False):
-    with tf.variable_scope(name):
+    with tf.variable_scope('{}/{}'.format(tf.get_variable_scope().name, name)):
         # filter : [height, width, output_channels, in_channels]
         w = tf.get_variable('w', [k_h, k_h, output_shape[-1], input_.get_shape()[-1]],
                             initializer=tf.random_normal_initializer(stddev=stddev))
@@ -121,7 +103,7 @@ def lrelu(x, leak=0.2, name="lrelu"):
 def linear(input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=False):
     shape = input_.get_shape().as_list()
 
-    with tf.variable_scope(scope or "Linear"):
+    with tf.variable_scope('{}/{}'.format(tf.get_variable_scope().name, scope)):
         matrix = tf.get_variable("Matrix", [shape[1], output_size], tf.float32,
                                  tf.random_normal_initializer(stddev=stddev))
         bias = tf.get_variable("bias", [output_size],
@@ -133,11 +115,10 @@ def linear(input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=
 
 def variable_summaries(var, name):
     """Attach a lot of summaries to a Tensor."""
-    with tf.name_scope('summaries'):
+    with tf.variable_scope('{}/{}'.format(tf.get_variable_scope().name, 'summaries')):
         mean = tf.reduce_mean(var)
         tf.scalar_summary('mean/' + name, mean)
-        with tf.name_scope('stddev'):
-            stddev = tf.sqrt(tf.reduce_sum(tf.square(var - mean)))
+        stddev = tf.sqrt(tf.reduce_sum(tf.square(var - mean)))
         tf.scalar_summary('stddev/' + name, stddev)
         tf.scalar_summary('max/' + name, tf.reduce_max(var))
         tf.scalar_summary('min/' + name, tf.reduce_min(var))

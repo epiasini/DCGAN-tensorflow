@@ -15,8 +15,9 @@ class DCGAN(object):
     def __init__(self, sess, image_size=108, is_crop=True,
                  batch_size=64, sample_size = 64, output_size=64,
                  y_dim=None, z_dim=100, gf_dim=64, df_dim=64,
-                 gfc_dim=1024, dfc_dim=1024, c_dim=3, vgg_reg=1,
-                 dataset_name='default', checkpoint_dir=None):
+                 gfc_dim=1024, dfc_dim=1024, c_dim=3, vgg_reg=0.1,
+                 dataset_name='default', sample_dir='samples',
+                 checkpoint_dir='checkpoint', log_dir='logs'):
         """
 
         Args:
@@ -31,7 +32,10 @@ class DCGAN(object):
             gfc_dim: (optional) Dimension of gen units for for fully connected layer. [1024]
             dfc_dim: (optional) Dimension of discrim units for fully connected layer. [1024]
             c_dim: (optional) Dimension of image color. For grayscale input, set to 1. [3]
-            vgg_reg: (optional) VGG regularisation hyperparameter. [1]
+            vgg_reg: (optional) VGG regularisation hyperparameter. [0.1]
+            sample_dir: (optional) Directory for saved samples [./samples]
+            log_dir: (optional) Directory for logs [./logs]
+            checkpoint_dir: (optional) Directory for checkpoints [./checkpoint]
         """
         self.sess = sess
         self.is_crop = is_crop
@@ -55,21 +59,25 @@ class DCGAN(object):
         self.vgg_reg = vgg_reg
 
         # batch normalization : deals with poor initialization helps gradient flow
-        self.d_bn1 = batch_norm(name='d_bn1')
-        self.d_bn2 = batch_norm(name='d_bn2')
+        with tf.variable_scope("Discriminator"):
+            self.d_bn1 = batch_norm(name='d_bn1')
+            self.d_bn2 = batch_norm(name='d_bn2')
 
-        if not self.y_dim:
-            self.d_bn3 = batch_norm(name='d_bn3')
+            if not self.y_dim:
+                self.d_bn3 = batch_norm(name='d_bn3')
 
-        self.g_bn0 = batch_norm(name='g_bn0')
-        self.g_bn1 = batch_norm(name='g_bn1')
-        self.g_bn2 = batch_norm(name='g_bn2')
+        with tf.variable_scope("Generator"):
+            self.g_bn0 = batch_norm(name='g_bn0')
+            self.g_bn1 = batch_norm(name='g_bn1')
+            self.g_bn2 = batch_norm(name='g_bn2')
 
-        if not self.y_dim:
-            self.g_bn3 = batch_norm(name='g_bn3')
+            if not self.y_dim:
+                self.g_bn3 = batch_norm(name='g_bn3')
 
         self.dataset_name = dataset_name
         self.checkpoint_dir = checkpoint_dir
+        self.log_dir = log_dir
+        self.sample_dir = sample_dir
         self.build_model()
 
     def build_model(self):
@@ -92,19 +100,21 @@ class DCGAN(object):
             self.sampler = self.sampler(self.z, self.y)
             self.D_logits_, self.D_ = self.discriminator(self.G, self.y, reuse=True)
         else:
-            self.G = self.generator(self.z)
-            self.D, self.D_logits = self.discriminator(self.images)
+            with tf.variable_scope("Generator"):
+                self.G = self.generator(self.z)
+                self.sampler = self.sampler(self.z)
 
-            self.sampler = self.sampler(self.z)
-            self.D_, self.D_logits_ = self.discriminator(self.G, reuse=True)
+            with tf.variable_scope("Discriminator"):
+                self.D, self.D_logits = self.discriminator(self.images)
+                self.D_, self.D_logits_ = self.discriminator(self.G, reuse=True)
 
-            self.vgg = vgg16.Vgg16()
-            self.vgg_ = vgg16.Vgg16()
-            with tf.name_scope("content_vgg"):
+            with tf.variable_scope("VGG"):
+                self.vgg = vgg16.Vgg16()
+                self.vgg_ = vgg16.Vgg16()
                 self.vgg.build(self.images)
                 self.vgg_.build(self.G, reuse=True)
-            self.V = self.vgg.pool4;
-            self.V_ = self.vgg_.pool4;
+                self.V = self.vgg.pool4;
+                self.V_ = self.vgg_.pool4;
         
 
         self.d_sum = tf.histogram_summary("summaries/d", self.D)
@@ -117,7 +127,7 @@ class DCGAN(object):
 
         self.d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits, tf.ones_like(self.D)))
         self.d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.zeros_like(self.D_)))
-        self.g_loss = - tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.zeros_like(self.D_))) + self.vgg_reg * self.v_loss
+        self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_))) + self.vgg_reg * self.v_loss
 
         self.d_loss_real_sum = tf.scalar_summary("summaries/d_loss_real", self.d_loss_real)
         self.d_loss_fake_sum = tf.scalar_summary("summaries/d_loss_fake", self.d_loss_fake)
@@ -129,8 +139,8 @@ class DCGAN(object):
 
         t_vars = tf.trainable_variables()
 
-        self.d_vars = [var for var in t_vars if 'd_' in var.name]
-        self.g_vars = [var for var in t_vars if 'g_' in var.name]
+        self.d_vars = [var for var in t_vars if 'Discriminator/d_' in var.name]
+        self.g_vars = [var for var in t_vars if 'Generator/g_' in var.name]
 
         self.saver = tf.train.Saver()
 
@@ -143,7 +153,6 @@ class DCGAN(object):
         elif config.dataset == 'cats':
             data = glob("./data/cats_vs_dogs/train/cat.*.jpg")
         #np.random.shuffle(data)
-
         d_optim = tf.train.AdamOptimizer(config.learning_rate, beta1=config.beta1) \
                           .minimize(self.d_loss, var_list=self.d_vars)
         g_optim = tf.train.AdamOptimizer(config.learning_rate, beta1=config.beta1) \
@@ -154,7 +163,7 @@ class DCGAN(object):
             self.G_sum, self.d_loss_fake_sum, self.g_loss_sum])
         self.d_sum = tf.merge_summary([self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum])
         #self.merged = tf.merge_all_summaries()
-        self.writer = tf.train.SummaryWriter("./logs", self.sess.graph)
+        self.writer = tf.train.SummaryWriter(self.log_dir, self.sess.graph)
 
         sample_z = np.random.uniform(-1, 1, size=(self.sample_size , self.z_dim))
         
@@ -259,7 +268,7 @@ class DCGAN(object):
                             feed_dict={self.z: sample_z, self.images: sample_images}
                         )
                     save_images(samples, [8, 8],
-                                './samples/train_{:02d}_{:04d}.png'.format(epoch, idx))
+                                '{}/train_{:02d}_{:04d}.png'.format(self.sample_dir, epoch, idx))
                     print("[Sample] d_loss: %.8f, g_loss: %.8f" % (d_loss, g_loss))
 
                 if np.mod(counter, 500) == 2:
@@ -363,6 +372,7 @@ class DCGAN(object):
             s2, s4, s8, s16 = int(s/2), int(s/4), int(s/8), int(s/16)
 
             # project `z` and reshape
+
             h0 = tf.reshape(linear(z, self.gf_dim*8*s16*s16, 'g_h0_lin'),
                             [-1, s16, s16, self.gf_dim * 8])
             h0 = tf.nn.relu(self.g_bn0(h0, train=False))
