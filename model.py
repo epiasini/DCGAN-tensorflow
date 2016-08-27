@@ -105,9 +105,18 @@ class DCGAN(object):
                 self.sampler = self.sampler(self.z)
 
             with tf.variable_scope("Discriminator"):
-                self.D, self.D_logits = self.discriminator(self.images)
-                self.D_, self.D_logits_ = self.discriminator(self.G, reuse=True)
+                self.D, self.D_logits, self.D_activation = self.discriminator(self.images)
+                self.D_, self.D_logits_, self.D_activation_ = self.discriminator(self.G, reuse=True)
 
+
+        self.d_sum = tf.histogram_summary("summaries/d", self.D)
+        self.d__sum = tf.histogram_summary("summaries/d_", self.D_)
+        self.G_sum = tf.image_summary("summaries/G", self.G)
+
+        self.d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits, tf.ones_like(self.D)))
+        self.d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.zeros_like(self.D_)))
+        if self.vgg_reg>0:
+            # feature matching with VGG
             with tf.variable_scope("VGG"):
                 self.vgg = vgg16.Vgg16()
                 self.vgg_ = vgg16.Vgg16()
@@ -116,22 +125,16 @@ class DCGAN(object):
                 self.V = self.vgg.pool4;
                 self.V_ = self.vgg_.pool4;
         
-
-        self.d_sum = tf.histogram_summary("summaries/d", self.D)
-        self.d__sum = tf.histogram_summary("summaries/d_", self.D_)
-        self.G_sum = tf.image_summary("summaries/G", self.G)
-
-        self.v_activation_real = tf.reduce_mean(self.V, reduction_indices=1)
-        self.v_activation_fake = tf.reduce_mean(self.V_, reduction_indices=1)
-        self.v_loss = tf.truediv(tf.nn.l2_loss(tf.sub(self.V_, self.V)), tf.nn.l2_loss(self.V))
-
-        self.d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits, tf.ones_like(self.D)))
-        self.d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.zeros_like(self.D_)))
-        if not self.vgg_reg==0:
+            self.v_activation_real = tf.reduce_mean(self.V, reduction_indices=1)
+            self.v_activation_fake = tf.reduce_mean(self.V_, reduction_indices=1)
+            self.v_loss = tf.truediv(tf.nn.l2_loss(tf.sub(self.V_, self.V)), tf.nn.l2_loss(self.V))
             self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_))) + self.vgg_reg * self.v_loss
-        else:
+        elif self.vgg_reg==0:
             # vanilla DCGAN
-            self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_)))            
+            self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_)))
+        else:
+            # feature matching with the discriminator
+            self.g_loss = tf.nn.l2_loss(tf.sub(self.D_activation, self.D_activation_))
 
         self.d_loss_real_sum = tf.scalar_summary("summaries/d_loss_real", self.d_loss_real)
         self.d_loss_fake_sum = tf.scalar_summary("summaries/d_loss_fake", self.d_loss_fake)
@@ -295,7 +298,7 @@ class DCGAN(object):
                 variable_summaries(h2, 'd_h2_conv/activation')
                 variable_summaries(h3, 'd_h3_conv/activation')
                 variable_summaries(h4, 'd_h3_lin/activation')
-            return tf.nn.sigmoid(h4), h4
+            return tf.nn.sigmoid(h4), h4, h3
         else:
             yb = tf.reshape(y, [self.batch_size, 1, 1, self.y_dim])
             x = conv_cond_concat(image, yb)
