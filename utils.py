@@ -49,6 +49,7 @@ def center_crop(x, crop_h, crop_w=None, resize_w=64):
         # of the picture
         crop_h = crop_w = np.min([h,w])
     else:
+        crop_h = np.min([crop_h, h, w])
         if crop_w is None:
             crop_w = crop_h
     j = int(round((h - crop_h)/2.))
