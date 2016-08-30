@@ -12,8 +12,8 @@ from ops import *
 from utils import *
 
 class DCGAN(object):
-    def __init__(self, sess, image_size=196, is_crop=True,
-                 batch_size=64, sample_size = 64, output_size=128,
+    def __init__(self, sess, image_size=108, is_crop=True,
+                 batch_size=64, sample_size=64, output_size=64,
                  y_dim=None, z_dim=100, gf_dim=64, df_dim=64,
                  gfc_dim=1024, dfc_dim=1024, c_dim=3, vgg_reg=0.1,
                  dataset_name='default', sample_dir='samples',
@@ -22,8 +22,9 @@ class DCGAN(object):
 
         Args:
             sess: TensorFlow session
-            image_size: size for center-cropping before input image scaling. Use None to just make a maximal square crop.
-            batch_size: The size of batch. Should be specified before training.
+            image_size: (optional) size for center-cropping before input image scaling. Use None to just make a maximal square crop [108].
+            batch_size: (optional) The size of batch. Should be specified before training [64].
+            sample_size: (optional) The size of the sample generated each 100 iterations [64].
             output_size: (optional) The resolution in pixels of the images. [64]
             y_dim: (optional) Dimension of dim for y. [None]
             z_dim: (optional) Dimension of dim for Z. [100]
@@ -282,7 +283,7 @@ class DCGAN(object):
                 if np.mod(counter, 500) == 2:
                     self.save(config.checkpoint_dir, counter)
 
-    def discriminator(self, image, y=None, reuse=False):
+    def discriminator(self, image, y=None, reuse=False, use_minibatch_discrimination=True):
         if reuse:
             tf.get_variable_scope().reuse_variables()
 
@@ -292,7 +293,37 @@ class DCGAN(object):
             h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim*2, name='d_h1_conv', attach_summaries=not reuse)))
             h2 = lrelu(self.d_bn2(conv2d(h1, self.df_dim*4, name='d_h2_conv', attach_summaries=not reuse)))
             h3 = lrelu(self.d_bn3(conv2d(h2, self.df_dim*8, name='d_h3_conv', attach_summaries=not reuse)))
-            h4 = linear(tf.reshape(h3, [self.batch_size, -1]), 1, 'd_h3_lin')
+            h3_reshaped = tf.reshape(h3, [self.batch_size, -1], name='d_h3_reshaped');
+
+
+            if use_minibatch_discrimination:
+                # minibatch discrimination (from "improved GAN" paper)
+                n_kernels = 100 # B in the paper
+                dim_per_kernel = 50 # C in the paper
+                x = linear(h3_reshaped, n_kernels * dim_per_kernel, scope='d_side_kernels')
+                activation = tf.reshape(x, (self.batch_size, n_kernels, dim_per_kernel)) # M in the paper
+                
+                big = np.zeros((self.batch_size, self.batch_size), dtype='float32')
+                big += np.eye(self.batch_size)
+                big = tf.expand_dims(big, 1)
+            
+                abs_dif = tf.reduce_sum(tf.abs(tf.expand_dims(activation, 3) - tf.expand_dims(tf.transpose(activation, [1, 2, 0]), 0)), 2)
+                mask = 1. - big
+                masked = tf.exp(-abs_dif) * mask # c_b in the paper
+
+                minibatch_features = tf.reduce_sum(masked, 2)
+
+                print("original features: ", h3_reshaped.get_shape())
+                print("minibatch_features: ", minibatch_features.get_shape())            
+        
+                x = tf.concat(1, [h3_reshaped , minibatch_features])
+                print("x: ", x.get_shape())
+
+                h4 = linear(x, 1, 'd_h3_lin')
+
+            else:
+                h4 = linear(h3_reshaped, 1, 'd_h3_lin')
+
             if not reuse:
                 variable_summaries(h0, 'd_h0_conv/activation')
                 variable_summaries(h1, 'd_h1_conv/activation')
@@ -315,7 +346,7 @@ class DCGAN(object):
             h2 = tf.concat(1, [h2, y])
 
             h3 = linear(h2, 1, 'd_h3_lin')
-            
+
             return tf.nn.sigmoid(h3), h3
 
     def generator(self, z, y=None):
