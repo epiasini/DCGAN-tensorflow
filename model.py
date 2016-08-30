@@ -12,8 +12,8 @@ from ops import *
 from utils import *
 
 class DCGAN(object):
-    def __init__(self, sess, image_size=108, is_crop=True,
-                 batch_size=64, sample_size = 64, output_size=64,
+    def __init__(self, sess, image_size=196, is_crop=True,
+                 batch_size=64, sample_size = 64, output_size=128,
                  y_dim=None, z_dim=100, gf_dim=64, df_dim=64,
                  gfc_dim=1024, dfc_dim=1024, c_dim=3, vgg_reg=0.1,
                  dataset_name='default', sample_dir='samples',
@@ -131,7 +131,9 @@ class DCGAN(object):
             self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_))) + self.vgg_reg * self.v_loss
         elif self.vgg_reg==0:
             # vanilla DCGAN
-            self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_)))
+            # self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(self.D_logits_, tf.ones_like(self.D_)))
+            # vanilla DCGAN with alternative G step
+            self.g_loss = -tf.reduce_mean(self.D_logits_)
         else:
             # feature matching with the discriminator
             self.g_loss = tf.nn.l2_loss(tf.sub(self.D_activation, self.D_activation_))
@@ -156,7 +158,7 @@ class DCGAN(object):
         if config.dataset == 'mnist':
             data_X, data_y = self.load_mnist()
         elif config.dataset == 'celebA':
-            data = glob(os.path.join("./data/", config.dataset, "*.jpg"))
+            data = glob("./data/img_align_celeba/*.jpg")
         elif config.dataset == 'cats':
             data = glob("./data/cats_vs_dogs/train/cat.*.jpg")
         #np.random.shuffle(data)
@@ -197,13 +199,12 @@ class DCGAN(object):
             if config.dataset == 'mnist':
                 batch_idxs = min(len(data_X), config.train_size) // config.batch_size
             elif config.dataset == 'celebA':
-                data = glob(os.path.join("./data", config.dataset, "*.jpg"))
+                data = glob("./data/img_align_celeba/*.jpg")
                 batch_idxs = min(len(data), config.train_size) // config.batch_size
             elif config.dataset == 'cats':
                 data = glob("./data/cats_vs_dogs/train/cat.*.jpg")
                 batch_idxs = min(len(data), config.train_size) // config.batch_size
                 
-
             for idx in xrange(0, batch_idxs):
                 if config.dataset == 'mnist':
                     batch_images = data_X[idx*config.batch_size:(idx+1)*config.batch_size]
