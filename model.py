@@ -298,9 +298,9 @@ class DCGAN(object):
 
             if use_minibatch_discrimination:
                 # minibatch discrimination (from "improved GAN" paper)
-                n_kernels = 100 # B in the paper
+                n_kernels = 50 # B in the paper
                 dim_per_kernel = 50 # C in the paper
-                x = linear(h3_reshaped, n_kernels * dim_per_kernel, scope='d_side_kernels')
+                x = linear(h3_reshaped, n_kernels * dim_per_kernel)
                 activation = tf.reshape(x, (self.batch_size, n_kernels, dim_per_kernel)) # M in the paper
                 
                 big = np.zeros((self.batch_size, self.batch_size), dtype='float32')
