@@ -26,13 +26,21 @@ def mixture_pareto(mu=1, alpha=1.5, size=None):
 def generate_latent_walk(checkpoint_dir, dataset_name, output_size, n_epochs, jump_length, output_file_name):
     n_jumps = n_epochs * 64
     
+    boundary = 1.3
     z = np.zeros((n_jumps, 100))
     walk = np.zeros((n_jumps, output_size, output_size, 3))
     for t in range(1,n_jumps):
-        #z[t,:] = z[t-1,:] + np.random.normal(loc=0, scale=jump_length, size=[1,100])
-        z[t,:] = z[t-1,:] + mixture_pareto(mu=0.05, alpha=1.5, size=[1,100])
-        outside_domain = z[t,:] > 2
-        z[t,outside_domain] = np.random.uniform(low=-0.6, high=0.6, size=[1,np.count_nonzero(outside_domain)])
+        jumps = mixture_pareto(mu=0.04, alpha=1.6, size=[1,100])
+        # keep walk confined within hypercube with reflective boundaries
+        new_z = z[t-1,:] + jumps
+        outside_domain_left = new_z<-boundary
+        outside_domain_right = new_z>boundary
+        new_z_2 = new_z[:]
+        new_z_2[outside_domain_left] = - boundary - (new_z[outside_domain_left] + boundary)
+        new_z_2[outside_domain_right] = boundary - (new_z[outside_domain_right] - boundary)
+        new_z[outside_domain_left] = new_z_2[outside_domain_left]
+        new_z[outside_domain_right] = new_z_2[outside_domain_right]
+        z[t,:] = new_z
 
     with tf.Session() as sess:
         dcgan = DCGAN(sess, checkpoint_dir=checkpoint_dir, dataset_name=dataset_name, output_size=output_size, is_train=False)
